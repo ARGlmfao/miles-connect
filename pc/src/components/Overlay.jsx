@@ -13,27 +13,26 @@ const Overlay = () => {
     // Safety dedupe for display
     const displayedOverlays = new Map();
 
-    // Load settings
+    // Load settings initially
     const saved = localStorage.getItem('milesconnect_settings');
     if (saved) {
       setSettings(JSON.parse(saved));
     }
+
     const normalizeNumber = (num) => {
       if (!num) return '';
       return num.toString().replace(/\D/g, '');
     };
 
     const handleEvent = (data) => {
-      console.log('OVERLAY EVENT RECEIVED');
-      console.log('OVERLAY RECEIVED EVENT:', data);
-
+      console.log('OVERLAY RENDER RECEIVED');
+      
       const now = Date.now();
 
       // PART A: Advanced Call Deduplication & Contact Resolution
       if (data.type === 'call') {
         const normalizedNumber = normalizeNumber(data.number);
         
-        // Find if we already have an active overlay for this number
         setNotifications(prev => {
           const existingCallIndex = prev.findIndex(n => 
             n.type === 'call' && 
@@ -44,20 +43,20 @@ const Overlay = () => {
           if (existingCallIndex !== -1) {
             const existingCall = prev[existingCallIndex];
 
-            // If the incoming event is not ringing, it means the call changed state (ended/answered)
             if (data.state !== 'ringing') {
-              // Only keep if it's a missed call, otherwise remove
               if (data.state === 'missed') {
                 const updated = [...prev];
                 updated[existingCallIndex] = { ...data, id: existingCall.id };
-                setTimeout(() => dismissNotification(existingCall.id), 10000);
+                setTimeout(() => {
+                  dismissNotification(existingCall.id);
+                  console.log('OVERLAY AUTO DISMISSED');
+                }, 10000);
                 return updated;
               } else {
                 return prev.filter(n => n.id !== existingCall.id);
               }
             }
 
-            // If both are ringing, check if we can improve the name
             if (data.state === 'ringing') {
               const currentName = existingCall.name || 'Unknown';
               const newName = data.name || 'Unknown';
@@ -68,21 +67,15 @@ const Overlay = () => {
                 updated[existingCallIndex] = { ...data, id: existingCall.id };
                 return updated;
               } else {
-                console.log('Ignoring duplicate ringing event for same number');
                 return prev;
               }
             }
           }
 
-          // If no existing call found and it's not ringing/missed, ignore
           if (data.state !== 'ringing' && data.state !== 'missed') return prev;
 
-          // Dedupe by time (20s) if we recently showed this number
           const dedupeKey = `call|${normalizedNumber}`;
           if (displayedOverlays.has(dedupeKey) && (now - displayedOverlays.get(dedupeKey) < 20000)) {
-             // Exception: If we have an Unknown and this is a better name, we already handled it above.
-             // If we reach here, it's either a fresh call or a duplicate we should ignore.
-             console.log('Call dedupe blocked duplicate overlay');
              return prev;
           }
           displayedOverlays.set(dedupeKey, now);
@@ -91,11 +84,18 @@ const Overlay = () => {
           const newNotification = { ...data, id };
           
           if (data.state === 'ringing') {
-            setTimeout(() => dismissNotification(id), 20000);
+            setTimeout(() => {
+              dismissNotification(id);
+              console.log('OVERLAY AUTO DISMISSED');
+            }, 20000);
           } else if (data.state === 'missed') {
-            setTimeout(() => dismissNotification(id), 10000);
+            setTimeout(() => {
+              dismissNotification(id);
+              console.log('OVERLAY AUTO DISMISSED');
+            }, 10000);
           }
 
+          console.log('OVERLAY SHOWN');
           return [...prev, newNotification];
         });
         return;
@@ -109,7 +109,6 @@ const Overlay = () => {
       } else {
         const dedupeKey = `${data.type}|${data.app || data.package || ''}|${data.title || ''}|${data.text || ''}`;
         if (displayedOverlays.has(dedupeKey) && (now - displayedOverlays.get(dedupeKey) < 8000)) {
-          console.log('Notification dedupe blocked duplicate display');
           return;
         }
         displayedOverlays.set(dedupeKey, now);
@@ -119,11 +118,17 @@ const Overlay = () => {
       const newNotification = { ...data, id };
       
       setNotifications(prev => [...prev, newNotification]);
+      console.log('OVERLAY SHOWN');
 
       if (data.type === 'notification') {
+        // Fetch fresh settings for duration
+        const latestSettings = JSON.parse(localStorage.getItem('milesconnect_settings') || '{}');
+        const duration = latestSettings.duration || 5;
+        
         setTimeout(() => {
           dismissNotification(id);
-        }, settings.duration * 1000);
+          console.log('OVERLAY AUTO DISMISSED');
+        }, duration * 1000);
       }
     };
 
@@ -132,7 +137,7 @@ const Overlay = () => {
     return () => {
       unsubEvent();
     };
-  }, [settings.duration]);
+  }, []); // Run only once to maintain stable IPC listener
 
   const dismissNotification = (id) => {
     setNotifications(prev => prev.filter(n => n.id !== id));

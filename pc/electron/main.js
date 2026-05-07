@@ -212,7 +212,7 @@ function createOverlayWindow() {
   }
 
   overlayWindow.webContents.on('did-finish-load', () => {
-    console.log('[OVERLAY WINDOW READY] Overlay page loaded');
+    console.log('OVERLAY LOADED true');
     overlayReady = true;
     processOverlayQueue();
   });
@@ -222,10 +222,45 @@ function createOverlayWindow() {
     overlayWindow = null;
     overlayReady = false;
     if (!isQuitting) {
-      // Recreate immediately to be ready for next notification
+      console.log('OVERLAY RECREATED');
       createOverlayWindow();
     }
   });
+}
+
+async function ensureOverlayWindowReady() {
+  console.log('OVERLAY ENSURE START');
+  
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    console.log('OVERLAY EXISTS false');
+    console.log('OVERLAY RECREATED');
+    createOverlayWindow();
+  } else {
+    console.log('OVERLAY EXISTS true');
+  }
+
+  // Wait for overlayReady if it's currently loading
+  if (!overlayReady) {
+    console.log('OVERLAY LOADED false');
+    // Wait for up to 2 seconds for ready
+    let attempts = 0;
+    while (!overlayReady && attempts < 20) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
+  }
+
+  if (overlayReady) {
+    console.log('OVERLAY LOADED true');
+    return true;
+  } else {
+    console.error('OVERLAY LOADED false (timeout)');
+    // If still not ready, try to reload once
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.reload();
+    }
+    return false;
+  }
 }
 
 function processOverlayQueue() {
@@ -238,21 +273,14 @@ function processOverlayQueue() {
   }
 }
 
-function sendToOverlayInternal(message, retryCount = 0) {
+async function sendToOverlayInternal(message, retryCount = 0) {
   console.log('OVERLAY REQUESTED');
 
-  const isWindowReady = overlayWindow && 
-                       !overlayWindow.isDestroyed() && 
-                       overlayWindow.webContents && 
-                       !overlayWindow.webContents.isLoading() &&
-                       overlayReady;
+  const ready = await ensureOverlayWindowReady();
 
-  if (!isWindowReady) {
+  if (!ready) {
     if (retryCount === 0) {
       console.log('[OVERLAY NOT READY] Retrying in 300ms...');
-      if (!overlayWindow || overlayWindow.isDestroyed()) {
-        createOverlayWindow();
-      }
       setTimeout(() => sendToOverlayInternal(message, 1), 300);
     } else {
       console.log('[OVERLAY NOT READY] Still not ready after retry, queueing message');
@@ -262,8 +290,11 @@ function sendToOverlayInternal(message, retryCount = 0) {
   }
 
   try {
-    // Show window without stealing focus
+    // Visibility fix: call these before sending
+    overlayWindow.setAlwaysOnTop(true, "screen-saver");
     overlayWindow.showInactive();
+    overlayWindow.moveTop();
+    
     // Ensure click-through is enabled after showing
     overlayWindow.setIgnoreMouseEvents(true, { forward: true });
     
