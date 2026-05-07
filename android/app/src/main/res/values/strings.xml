@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Miles Connect</string>
+    <string name="status_not_connected">Not connected</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_error">Error</string>
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="open_settings">Notification Access Settings</string>
+    <string name="send_test">Send Test Event</string>
+    <string name="scan_qr">Scan PC QR</string>
+    <string name="log_area_hint">Sent events will appear here…</string>
+    <string name="notification_access_warning">Notification access is required for Miles Connect to work.</string>
+</resources>
